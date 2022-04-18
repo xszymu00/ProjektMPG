@@ -15,11 +15,11 @@
 #include "imageLoad.h"
 #include <cmath>
 #include <GL/glut.h>
-#include "xszymu00.h"
 
 // konstanty a makra pridejte zde
 // PI/180
 #define PIover180 0.017453292519943f
+
 #define MENU_RESET  1001
 #define MENU_EXIT_OK 1002
 #define MENU_EXIT_NO 1003 
@@ -28,6 +28,10 @@
 #define MENU_TIMER_RESET 1006
 #define MENU_TEXTURES_ON 1007
 #define MENU_TEXTURES_OFF 1008
+
+#define TEXTURE_WIDTH  64
+#define TEXTURE_HEIGHT 64
+
 
 // globalni promenne pro transformace
 int xnew = 0, ynew = 0;
@@ -44,33 +48,52 @@ float xScale = 1;
 bool throwing = false;
 float teapotZ = -100.0;
 float teapotX = 0;
+bool mipmap = false;
+bool texturesEnabled = true;
+unsigned char texture[TEXTURE_HEIGHT][TEXTURE_WIDTH][4];
+GLuint textury[2];
 
 // nastaveni projekce
 float fov = 60.0;
 float nearPlane = 0.1;
 float farPlane = 150.0;
 
-GLfloat lightPosition[] = { 0, .0f, 10.0f, .0f };
+GLfloat lightPosition[] = { 0, 0, -20, 0 };
 GLfloat lightAmbient[] = { 0.2f, 0.2f, 0.2f, 1.0f };
 GLfloat lightDiffuse[] = { 1.0f, 1.0f, 0.0f, 1.0f };
 GLfloat lightSpecular[] = { .0f, .0f, .0f, 1.0f };
 GLfloat lightDirection[] = { .0f, .0f, -1.0f };
 
-GLfloat spotlightPosition[] = { tranX,tranY,tranZ };
-GLfloat spotlightDirection[] = { tranX, tranY, tranZ };
+
+GLfloat spotlightPosition[] = { -1 * tranX,-1 * tranY,-1 * tranZ,0 };
+GLfloat spotlightDirection[] = { 0,0,-100 };
 
 GLfloat materialAmbient[] = { 0.3f, 0.3f, 0.3f, 1.0f };
 GLfloat materialDiffuse[] = { 0.5f, 0.5f, 0.5f, 1.0f };
 GLfloat materialSpecular[] = { .0f, .0f, .0f, 1.0f };
-GLfloat materialShininess = 30.0f;
+GLfloat materialShininess = 60;
 
 // zde vlastnosti svetel materialu, menu, popripade jinych vlastnosti
 // ...
 
 
 
+void InitTexture(void)
+{
+	int i, j, c;
+	unsigned char* P;
 
-
+	for (j = 0; j < TEXTURE_HEIGHT; j++) {
+		P = texture[j][0];
+		for (i = 0; i < TEXTURE_WIDTH; i++) {
+			c = ((((i & 0x02) == 0) ^ (((j & 0x02)) == 0))) ? 255 : 0;
+			*P++ = (unsigned char)c;
+			*P++ = (unsigned char)c;
+			*P++ = (unsigned char)c;
+			*P++ = (unsigned char)255;
+		}
+	}
+}
 // funkce volana pri zmene velikosti sceny
 void OnReshape(int w, int h)            // event handler pro zmenu velikosti okna
 {
@@ -112,6 +135,31 @@ void OnInit(void)
 	glLightfv(GL_LIGHT1, GL_SPOT_DIRECTION, spotlightDirection);
 	glLightfv(GL_LIGHT1, GL_POSITION, spotlightPosition);
 
+	//InitTexture();   // vytvoreni textury sachovnice v bufferu texture[]
+
+	//glGenTextures(1, &textury[0]);
+	//glBindTexture(GL_TEXTURE_2D, textury[0]);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,    // zde dojde k presunu textury do pameti graficke karty
+		TEXTURE_WIDTH, TEXTURE_HEIGHT,
+		0, GL_RGBA, GL_UNSIGNED_BYTE, texture);
+
+	setTexture("textura.bmp", &textury[1], mipmap);
+	glBindTexture(GL_TEXTURE_2D, textury[1]);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+	glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST); // perspektivni korekce zobrazeni
+
+	glEnable(GL_TEXTURE_2D);
 
 
 
@@ -122,11 +170,14 @@ void DrawCube(int x, int y, int z, int size)
 	glBegin(GL_QUADS);
 	glColor3f(0.5, 0.5, 0.8);
 
+	
+
 	// predni stena
 	glVertex3i(x - size, y - size, z + size);
 	glVertex3i(x - size, y + size, z + size);
 	glVertex3i(x + size, y + size, z + size);
 	glVertex3i(x + size, y - size, z + size);
+
 
 	// zadni stena
 	glVertex3i(x + size, y - size, z - size);
@@ -251,7 +302,27 @@ void DrawPlane(int size)
 	glPopMatrix();
 }
 
-void throwSmth() {
+void drawSphereWithTexture() {
+	glPushMatrix();
+	GLUquadric* quadric = gluNewQuadric();
+	gluQuadricDrawStyle(quadric, GLU_FILL);
+	gluQuadricOrientation(quadric, GLU_OUTSIDE);
+	gluQuadricNormals(quadric, GLU_SMOOTH);
+
+	if (texturesEnabled) {
+		gluQuadricTexture(quadric, GLU_TRUE);
+		glEnable(GL_TEXTURE_2D);
+	}
+		glBindTexture(GL_TEXTURE_2D, textury[1]);
+		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+		gluSphere(quadric, 5.0, 20, 20);
+		glDisable(GL_TEXTURE_2D);
+	
+	gluDeleteQuadric(quadric);
+	glPopMatrix();
+}
+
+void throwTeapot() {
 	glPushMatrix();
 	glColor3f(0, 1, 0);
 	glTranslatef(teapotX, 0, teapotZ);
@@ -283,12 +354,45 @@ void OnDisplay(void)
 
 	// zde vykreslovani dalsich objektu ...
 	if (throwing) {
-		throwSmth();
+		throwTeapot();
 	}
 	// (priklad) vykresli podlahu
+
+
 	DrawPlane(100);
+
+	glPushMatrix();
+	glTranslatef(15.0, 0, -40);
+	drawSphereWithTexture();
+	glPopMatrix();
+
+	glPushMatrix();
 	glScalef(xScale, 1, 1);
-	DrawCube(0, 0, 0, 10);
+	DrawCube(10, 0, -10, 10);
+	glPopMatrix();
+	
+	glDepthMask(GL_FALSE);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	// pruhledna stena
+	glDisable(GL_LIGHTING);
+	glDisable(GL_CULL_FACE);
+	glBegin(GL_QUADS);
+
+	glColor4f(0, 1, 1, 0.8);
+	glVertex3i(-5, -5, 5);
+	glVertex3i(-5, 5, 5);
+	glVertex3i(5, 5, 5);
+	glVertex3i(5, -5, 5);
+
+	glEnd();
+
+	glDepthMask(GL_TRUE);
+	glDisable(GL_BLEND);
+	glEnable(GL_LIGHTING);
+	glDisable(GL_CULL_FACE);
+
 	glFlush();
 	glutSwapBuffers();
 }
@@ -451,6 +555,17 @@ void onMenu(int value)
 	{
 		xScale = 1;
 	}
+	break;
+	case MENU_TEXTURES_OFF: 
+	{
+		texturesEnabled = false;
+	}
+	break;
+	case MENU_TEXTURES_ON: 
+	{
+		texturesEnabled = true;
+	}
+	break;
 	}
 	glutPostRedisplay();
 }
@@ -489,8 +604,8 @@ void OnKey(unsigned char key, int x, int y) {
 	break;
 	case 't':
 	{
-		teapotX = -1*tranX;
-		teapotZ = -1*tranZ;
+		teapotX = -1 * tranX;
+		teapotZ = -1 * tranZ;
 		throwAngle = angle;
 		throwing = !throwing;
 		glutTimerFunc(15, onTimer, 1);
