@@ -15,6 +15,7 @@
 #include "imageLoad.h"
 #include <cmath>
 #include <GL/glut.h>
+#include "OBJ_Loader.h"
 
 // konstanty a makra pridejte zde
 // PI/180
@@ -28,6 +29,10 @@
 #define MENU_TIMER_RESET 1006
 #define MENU_TEXTURES_ON 1007
 #define MENU_TEXTURES_OFF 1008
+#define MENU_LIGHTING_OFF 1009
+#define MENU_LIGHTING_ON 1010
+#define MENU_FLYING_OFF 1011
+#define MENU_FLYING_ON 1012
 
 #define TEXTURE_WIDTH  64
 #define TEXTURE_HEIGHT 64
@@ -40,8 +45,8 @@ int xx, yy, zz;
 int state;
 float angle = 0;
 float throwAngle;
-float tranZ = -100.0;
-float tranX = 0.0;
+float tranZ = -12.0;
+float tranX = 1.0;
 float tranY = 0.0;
 bool timerOn = false;
 float xScale = 1;
@@ -52,6 +57,16 @@ bool mipmap = false;
 bool texturesEnabled = true;
 unsigned char texture[TEXTURE_HEIGHT][TEXTURE_WIDTH][4];
 GLuint textury[2];
+bool lightingEnabled = true;
+bool flashlightEnabled = false;
+bool walk = false;
+float walkingAngle = 0;
+float flyAngle = 0;
+bool loaded;
+bool flying = false;
+float tempX = 0; float tempY = 0; float tempZ = 0;
+
+objl::Loader loader;
 
 // nastaveni projekce
 float fov = 60.0;
@@ -64,9 +79,11 @@ GLfloat lightDiffuse[] = { 1.0f, 1.0f, 0.0f, 1.0f };
 GLfloat lightSpecular[] = { .0f, .0f, .0f, 1.0f };
 GLfloat lightDirection[] = { .0f, .0f, -1.0f };
 
-
-GLfloat spotlightPosition[] = { -1 * tranX,-1 * tranY,-1 * tranZ,0 };
-GLfloat spotlightDirection[] = { 0,0,-100 };
+GLfloat flashlightAmbient[] = { .5f, .5f, .5f, 1 };
+GLfloat flashlightDiffuse[] = { .9f, .9f, .9f, 1.0f };
+GLfloat flashlightSpecular[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+GLfloat flashlightPosition[] = { tranX,tranY,tranZ,0.0 };
+GLfloat flashlightDirection[] = { 0.0f,0.0f,-1.0f };
 
 GLfloat materialAmbient[] = { 0.3f, 0.3f, 0.3f, 1.0f };
 GLfloat materialDiffuse[] = { 0.5f, 0.5f, 0.5f, 1.0f };
@@ -86,11 +103,10 @@ void InitTexture(void)
 	for (j = 0; j < TEXTURE_HEIGHT; j++) {
 		P = texture[j][0];
 		for (i = 0; i < TEXTURE_WIDTH; i++) {
-			c = ((((i & 0x02) == 0) ^ (((j & 0x02)) == 0))) ? 255 : 0;
-			*P++ = (unsigned char)c;
-			*P++ = (unsigned char)c;
-			*P++ = (unsigned char)c;
-			*P++ = (unsigned char)255;
+			*P++ = 100;
+			*P++ = 20;
+			*P++ = 20;
+			*P++ = 255;
 		}
 	}
 }
@@ -131,25 +147,29 @@ void OnInit(void)
 	glMaterialfv(GL_FRONT, GL_DIFFUSE, materialDiffuse);
 	glMaterialfv(GL_FRONT, GL_SPECULAR, materialSpecular);
 
+	
+	glLightfv(GL_LIGHT1, GL_AMBIENT, flashlightAmbient);
+	glLightfv(GL_LIGHT1, GL_DIFFUSE, flashlightDiffuse);
+	glLightfv(GL_LIGHT1, GL_SPECULAR, flashlightSpecular);
+	glLightfv(GL_LIGHT1, GL_SPOT_DIRECTION, flashlightDirection);
 	glLightf(GL_LIGHT1, GL_SPOT_CUTOFF, 10);
-	glLightfv(GL_LIGHT1, GL_SPOT_DIRECTION, spotlightDirection);
-	glLightfv(GL_LIGHT1, GL_POSITION, spotlightPosition);
+	
 
-	//InitTexture();   // vytvoreni textury sachovnice v bufferu texture[]
+	InitTexture();
 
-	//glGenTextures(1, &textury[0]);
-	//glBindTexture(GL_TEXTURE_2D, textury[0]);
+	glGenTextures(1, &textury[0]);
+	glBindTexture(GL_TEXTURE_2D, textury[0]);
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,    // zde dojde k presunu textury do pameti graficke karty
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
 		TEXTURE_WIDTH, TEXTURE_HEIGHT,
 		0, GL_RGBA, GL_UNSIGNED_BYTE, texture);
 
-	setTexture("textura.bmp", &textury[1], mipmap);
+	setTexture("drevo.bmp", &textury[1], mipmap);
 	glBindTexture(GL_TEXTURE_2D, textury[1]);
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -157,20 +177,55 @@ void OnInit(void)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
-	glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST); // perspektivni korekce zobrazeni
+	glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);
 
 	glEnable(GL_TEXTURE_2D);
 
+	loaded = loader.LoadFile("block.obj");
 
 
 }
+
+void jiggle() {
+	walkingAngle += 170;
+	tranY += sin(walkingAngle);
+
+}
+
+bool collisionWithCube() {
+	if (-22 <= tranX && tranX <= 2 && -2 <= tranZ && tranZ <= 22 && -11 <= tranY && tranY <= 11)
+		return true;
+	return false;
+}
+
+void drawTetrahedron() {
+
+	glPushMatrix();
+	if (texturesEnabled) {
+		glEnable(GL_TEXTURE_2D);
+	}
+	glBindTexture(GL_TEXTURE_2D, textury[0]);
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+	glColor3f(1, 1, 1);
+	glBegin(GL_TRIANGLE_STRIP);
+	glVertex3f(0, 2, 0);
+	glVertex3f(-1, 0, 1);
+	glVertex3f(1, 0, 1);
+	glVertex3f(0, 0, -1.4);
+	glVertex3f(0, 2, 0);
+	glVertex3f(-1, 0, 1);
+	glEnd();
+	glDisable(GL_TEXTURE_2D);
+	glPopMatrix();
+}
+
 void DrawCube(int x, int y, int z, int size)
 {
 	glPushMatrix();
 	glBegin(GL_QUADS);
-	glColor3f(0.5, 0.5, 0.8);
+	glColor3f(1, 1, 1);
 
-	
+
 
 	// predni stena
 	glVertex3i(x - size, y - size, z + size);
@@ -313,12 +368,38 @@ void drawSphereWithTexture() {
 		gluQuadricTexture(quadric, GLU_TRUE);
 		glEnable(GL_TEXTURE_2D);
 	}
-		glBindTexture(GL_TEXTURE_2D, textury[1]);
-		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-		gluSphere(quadric, 5.0, 20, 20);
-		glDisable(GL_TEXTURE_2D);
-	
+	glBindTexture(GL_TEXTURE_2D, textury[1]);
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+	gluSphere(quadric, 5.0, 50, 50);
+	glDisable(GL_TEXTURE_2D);
+
 	gluDeleteQuadric(quadric);
+	glPopMatrix();
+}
+
+void drawBlenderModel() {
+	glPushMatrix();
+	if (texturesEnabled) {
+		glEnable(GL_TEXTURE_2D);
+	}
+	glBindTexture(GL_TEXTURE_2D, textury[0]);
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+	if (loaded)
+	{
+		for (int i = 0; i < loader.LoadedMeshes.size(); i++)
+		{
+			objl::Mesh curMesh = loader.LoadedMeshes[i];
+
+			glBegin(GL_TRIANGLES);
+			for (int j = 0; j < curMesh.Vertices.size(); j++)
+			{
+				glNormal3f(curMesh.Vertices[j].Normal.X, curMesh.Vertices[j].Normal.Y, curMesh.Vertices[j].Normal.Z);
+				glVertex3f(curMesh.Vertices[j].Position.X, curMesh.Vertices[j].Position.Y, curMesh.Vertices[j].Position.Z);
+			}
+			glEnd();
+		}
+	}
+	glDisable(GL_TEXTURE_2D);
 	glPopMatrix();
 }
 
@@ -362,15 +443,34 @@ void OnDisplay(void)
 	DrawPlane(100);
 
 	glPushMatrix();
-	glTranslatef(15.0, 0, -40);
+	glTranslatef(-30, 0, 0);
+	glColor3f(1, 1, 1);
+	glDisable(GL_LIGHTING);
 	drawSphereWithTexture();
+	if (lightingEnabled) {
+		glEnable(GL_LIGHTING);
+	}
 	glPopMatrix();
+
+	if (flashlightEnabled) {
+		
+	}
 
 	glPushMatrix();
 	glScalef(xScale, 1, 1);
 	DrawCube(10, 0, -10, 10);
 	glPopMatrix();
-	
+
+	glPushMatrix();
+	glTranslatef(50, 0, 0);
+	glScalef(7, 7, 7);
+	glDisable(GL_LIGHTING);
+	drawTetrahedron();
+	if (lightingEnabled) {
+		glEnable(GL_LIGHTING);
+	}
+	glPopMatrix();
+
 	glDepthMask(GL_FALSE);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -392,6 +492,19 @@ void OnDisplay(void)
 	glDisable(GL_BLEND);
 	glEnable(GL_LIGHTING);
 	glDisable(GL_CULL_FACE);
+
+
+	glPushMatrix();
+	glDisable(GL_LIGHTING);
+	glScalef(5, 5, 5);
+	glTranslatef(15, 0, 0);
+	glColor3f(1, 1, 1);
+	drawBlenderModel();
+	glPopMatrix();
+
+	if (!lightingEnabled) {
+		glDisable(GL_LIGHTING);
+	}
 
 	glFlush();
 	glutSwapBuffers();
@@ -429,6 +542,7 @@ void OnMouseMotion(int x, int y)
 		xnew = xold + x - xx;
 		ynew = -(yold + y - yy);
 		angle = xnew * PIover180;
+		flyAngle = ynew * PIover180;
 		glutPostRedisplay();
 	}
 }
@@ -438,37 +552,31 @@ void OnSpecial(int key, int mx, int my)
 {
 	switch (key)
 	{
-	case GLUT_KEY_UP:
-	{
-		tranZ += 2 * cos(angle);
-		tranX -= 2 * sin(angle);
-	}
-	break;
-	case GLUT_KEY_DOWN:
-	{
-		tranZ -= 2 * cos(angle);
-		tranX += 2 * sin(angle);
-	}
-	break;
-	case GLUT_KEY_RIGHT:
-	{
-		tranZ -= 2 * sin(angle);
-		tranX -= 2 * cos(angle);
-	}
-	break;
-	case GLUT_KEY_LEFT:
-	{
-		tranZ += 2 * sin(angle);
-		tranX += 2 * cos(angle);
-	}
-	break;
 	case GLUT_KEY_PAGE_UP:
 	{
+		if (collisionWithCube()) {
+			tranZ = tempZ;
+			tranY = tempY;
+			tranX = tempX;
+			break;
+		}
+		tempX = tranX;
+		tempY = tranY;
+		tempZ = tranZ;
 		tranY -= 2;
 	}
 	break;
 	case GLUT_KEY_PAGE_DOWN:
 	{
+		if (collisionWithCube()) {
+			tranZ = tempZ;
+			tranY = tempY;
+			tranX = tempX;
+			break;
+		}
+		tempX = tranX;
+		tempY = tranY;
+		tempZ = tranZ;
 		if (tranY >= 0) {
 			break;
 		}
@@ -499,11 +607,21 @@ inline void createMenu(void(*func)(int value))
 	glutAddMenuEntry("Vypnout", MENU_TEXTURES_OFF);
 	glutAddMenuEntry("Zapnout", MENU_TEXTURES_ON);
 
+	int idLighting = glutCreateMenu(func);
+	glutAddMenuEntry("Vypnout", MENU_LIGHTING_OFF);
+	glutAddMenuEntry("Zapnout", MENU_LIGHTING_ON);
+
+	int idFlying = glutCreateMenu(func);
+	glutAddMenuEntry("Vypnout", MENU_FLYING_OFF);
+	glutAddMenuEntry("Zapnout", MENU_FLYING_ON);
+
 	glutCreateMenu(func);
 	glutPostRedisplay();
 	glutAddSubMenu("Animace", idTimer);
 	glutAddMenuEntry("Reset pozice ", MENU_RESET);
 	glutAddSubMenu("Textury", idTextures);
+	glutAddSubMenu("Osvetleni", idLighting);
+	glutAddSubMenu("Letani", idFlying);
 	glutAddSubMenu("Konec", idSub);
 	glutPostRedisplay();
 
@@ -556,50 +674,128 @@ void onMenu(int value)
 		xScale = 1;
 	}
 	break;
-	case MENU_TEXTURES_OFF: 
+	case MENU_TEXTURES_OFF:
 	{
 		texturesEnabled = false;
 	}
 	break;
-	case MENU_TEXTURES_ON: 
+	case MENU_TEXTURES_ON:
 	{
 		texturesEnabled = true;
 	}
 	break;
+	case MENU_LIGHTING_OFF:
+	{
+		lightingEnabled = false;
 	}
-	glutPostRedisplay();
+	break;
+	case MENU_LIGHTING_ON:
+	{
+		lightingEnabled = true;
+	}
+	break;
+	case MENU_FLYING_OFF:
+		flying = false;
+		tranY = 0;
+		break;
+	case MENU_FLYING_ON:
+		flying = true;
+		break;
+		glutPostRedisplay();
+	}
 }
 
 void OnKey(unsigned char key, int x, int y) {
+
 	switch (key)
 	{
 	case 'w':
 	{
+		if (collisionWithCube()) {
+			tranZ = tempZ;
+			tranY = tempY;
+			tranX = tempX;
+			break;
+		}
+		tempX = tranX;
+		tempY = tranY;
+		tempZ = tranZ;
 		tranZ += 2 * cos(angle);
 		tranX -= 2 * sin(angle);
+		if (flying) {
+			tranY += 2 * sin(flyAngle);
+			break;
+		}
+		jiggle();
+
 	}
 	break;
 	case 's':
 	{
+		if (collisionWithCube()) {
+			tranZ = tempZ;
+			tranY = tempY;
+			tranX = tempX;
+			break;
+		}
+		tempX = tranX;
+		tempY = tranY;
+		tempZ = tranZ;
 		tranZ -= 2 * cos(angle);
 		tranX += 2 * sin(angle);
+		if (flying) {
+			break;
+		}
+		jiggle();
 	}
 	break;
 	case 'd':
 	{
+		if (collisionWithCube()) {
+			tranZ = tempZ;
+			tranY = tempY;
+			tranX = tempX;
+			break;
+		}
+		tempX = tranX;
+		tempY = tranY;
+		tempZ = tranZ;
 		tranZ -= 2 * sin(angle);
 		tranX -= 2 * cos(angle);
+		if (flying) {
+			break;
+		}
+		jiggle();
+
 	}
 	break;
 	case 'a':
 	{
+		if (collisionWithCube()) {
+			tranZ = tempZ;
+			tranY = tempY;
+			tranX = tempX;
+			break;
+		}
+		tempX = tranX;
+		tempY = tranY;
+		tempZ = tranZ;
 		tranZ += 2 * sin(angle);
 		tranX += 2 * cos(angle);
+		if (flying) {
+			break;
+		}
+		jiggle();
 	}
 	break;
-	case 'r':
+	case 'f':
 	{
-		glEnable(GL_LIGHT1);
+		glLightfv(GL_LIGHT1, GL_POSITION, flashlightPosition);
+		flashlightEnabled = !flashlightEnabled;
+		if (flashlightEnabled)
+			glEnable(GL_LIGHT1);
+		else
+			glDisable(GL_LIGHT1);
 	}
 	break;
 	case 't':
@@ -609,10 +805,10 @@ void OnKey(unsigned char key, int x, int y) {
 		throwAngle = angle;
 		throwing = !throwing;
 		glutTimerFunc(15, onTimer, 1);
-		glutPostRedisplay();
 	}
 	break;
-
+	default:
+		break;
 	}
 	glutPostRedisplay();
 }
