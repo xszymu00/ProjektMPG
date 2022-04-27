@@ -10,7 +10,7 @@
   - [x] d. ovládání světla (vypnout, zapnout),
   - [x] e. ukončení programu.
  
-6. Výpis textu (2 b) – Vypisujte někam do scény pomocí textu poslední vykonávaný příkaz uživatelského rozhraní (rotace, posun, pauza atd.). Použijte funkci glutBitmapCharacter s vámi nastaveným fontem. Text při vykreslování nebude podléhat transformacím a osvětlení – ideální řešení je nastavit matici PROJECTION na ortografické 2D mapování, vykreslit text na patřičné souřadnice a poté nastavit mapování perspektivní a vykreslit vaši scénu. Také při vykreslování textu vypínejte vlastnosti GL_TEXTURE_2D a GL_LIGHTING, aby se neaplikovaly i na něj.
+- [x] 6. Výpis textu (2 b) – Vypisujte někam do scény pomocí textu poslední vykonávaný příkaz uživatelského rozhraní (rotace, posun, pauza atd.). Použijte funkci glutBitmapCharacter s vámi nastaveným fontem. Text při vykreslování nebude podléhat transformacím a osvětlení – ideální řešení je nastavit matici PROJECTION na ortografické 2D mapování, vykreslit text na patřičné souřadnice a poté nastavit mapování perspektivní a vykreslit vaši scénu. Také při vykreslování textu vypínejte vlastnosti GL_TEXTURE_2D a GL_LIGHTING, aby se neaplikovaly i na něj.
 7. Ruční svítilna (2 b) – Na stisk tlačítka R bude rozsvíceno reflektorové světlo s úzkým poloměrem a se středem v pozici kamery.
 - [x] 8. Blender model (2 b) – Pomocí Blenderu vymodelujte objekt. Vyexportujte souřadnice vertexů, normál a vložte je do projektu (1 b). Vložte texturu na objekt (1 b).
 - [x] 9. Létání (2 b) – Rozšíření pohybu pomocí šipek a myši. Pohyb myší nahoru a dolů způsobí naklonění horizontální roviny pro pohyb.
