@@ -45,9 +45,10 @@ int xx, yy, zz;
 int state;
 float angle = 0;
 float throwAngle;
-float tranZ = -12.0;
+float tranZ = -100.0;
 float tranX = 1.0;
 float tranY = 0.0;
+bool rotateCamera;
 bool timerOn = false;
 float xScale = 1;
 bool throwing = false;
@@ -65,6 +66,7 @@ float flyAngle = 0;
 bool loaded;
 bool flying = false;
 float tempX = 0; float tempY = 0; float tempZ = 0;
+std::string lastAction;
 
 objl::Loader loader;
 
@@ -147,13 +149,13 @@ void OnInit(void)
 	glMaterialfv(GL_FRONT, GL_DIFFUSE, materialDiffuse);
 	glMaterialfv(GL_FRONT, GL_SPECULAR, materialSpecular);
 
-	
+
 	glLightfv(GL_LIGHT1, GL_AMBIENT, flashlightAmbient);
 	glLightfv(GL_LIGHT1, GL_DIFFUSE, flashlightDiffuse);
 	glLightfv(GL_LIGHT1, GL_SPECULAR, flashlightSpecular);
 	glLightfv(GL_LIGHT1, GL_SPOT_DIRECTION, flashlightDirection);
 	glLightf(GL_LIGHT1, GL_SPOT_CUTOFF, 10);
-	
+
 
 	InitTexture();
 
@@ -185,6 +187,20 @@ void OnInit(void)
 
 
 }
+void showLastActionText() {
+	glPushMatrix();
+	glDisable(GL_TEXTURE_2D);
+	glDisable(GL_LIGHTING);
+	glColor3f(0, 0, 0);
+	glRasterPos3f(0, 70, -50);
+	for (int i = 0; i < lastAction.length(); i++) {
+		glutBitmapCharacter(GLUT_BITMAP_9_BY_15, lastAction[i]);
+	}
+	if (lightingEnabled) {
+		glEnable(GL_LIGHTING);
+	}
+	glPopMatrix();
+}
 
 void jiggle() {
 	walkingAngle += 170;
@@ -196,6 +212,20 @@ bool collisionWithCube() {
 	if (-22 <= tranX && tranX <= 2 && -2 <= tranZ && tranZ <= 22 && -11 <= tranY && tranY <= 11)
 		return true;
 	return false;
+}
+
+void drawCone(float x, float y, float z, float radius)
+{
+	glBegin(GL_TRIANGLE_FAN);
+	glVertex3f(x, y, z);
+	float angle;
+	for (angle = 0.0f; angle < (2.0f * 3.14 ); angle += (3.14 / 8.0f))
+	{
+		x = radius * sin(angle);
+		y = radius * cos(angle);
+		glVertex2f(x, y);
+	}
+	glEnd();
 }
 
 void drawTetrahedron() {
@@ -405,11 +435,15 @@ void drawBlenderModel() {
 
 void throwTeapot() {
 	glPushMatrix();
-	glColor3f(0, 1, 0);
+	if (lightingEnabled) {
+		glEnable(GL_LIGHTING);
+	}
 	glTranslatef(teapotX, 0, teapotZ);
 	glutSolidTeapot(2);
 	glutPostRedisplay();
 	glPopMatrix();
+	glDisable(GL_LIGHTING);
+	lastAction = "THROW";
 }
 
 // funkce volana pri prekresleni sceny
@@ -453,7 +487,7 @@ void OnDisplay(void)
 	glPopMatrix();
 
 	if (flashlightEnabled) {
-		
+
 	}
 
 	glPushMatrix();
@@ -502,9 +536,17 @@ void OnDisplay(void)
 	drawBlenderModel();
 	glPopMatrix();
 
+	glPushMatrix();
+	glTranslatef(20, 0, 0);
+	drawCone(0,0,0,10);
+	glPopMatrix();
+
+	showLastActionText();
+	
 	if (!lightingEnabled) {
 		glDisable(GL_LIGHTING);
 	}
+
 
 	glFlush();
 	glutSwapBuffers();
@@ -517,18 +559,22 @@ void OnMouseButton(int button, int state, int x, int y)
 
 	if (button == GLUT_LEFT_BUTTON) {
 		if (state == GLUT_DOWN) {
+			rotateCamera = true;
 			xx = x;
 			yy = y;
+			lastAction = "LEFT_CLICK";
 		}
 		else {
-			state = 0;
+			rotateCamera = false;
 			xold = xnew;
 			yold = ynew;
 		}
 	}
-
-	// pripadne test pro prave tlacitko pro vyvolani menu
-	// ... GLUT_RIGHT_BUTTON
+	if (button == GLUT_RIGHT_BUTTON) {
+		if (state == GLUT_DOWN) {
+			lastAction = "RIGHT_CLICK";
+		}
+	}
 
 	glutPostRedisplay();
 }
@@ -538,11 +584,12 @@ void OnMouseMotion(int x, int y)
 {
 	y = glutGet(GLUT_WINDOW_HEIGHT) - y;
 
-	if (state == 0) {
+	if (rotateCamera) {
 		xnew = xold + x - xx;
 		ynew = -(yold + y - yy);
 		angle = xnew * PIover180;
 		flyAngle = ynew * PIover180;
+		lastAction = "ROTATION";
 		glutPostRedisplay();
 	}
 }
@@ -554,6 +601,7 @@ void OnSpecial(int key, int mx, int my)
 	{
 	case GLUT_KEY_PAGE_UP:
 	{
+		lastAction = "PG_UP";
 		if (collisionWithCube()) {
 			tranZ = tempZ;
 			tranY = tempY;
@@ -564,10 +612,12 @@ void OnSpecial(int key, int mx, int my)
 		tempY = tranY;
 		tempZ = tranZ;
 		tranY -= 2;
+		
 	}
 	break;
 	case GLUT_KEY_PAGE_DOWN:
 	{
+		lastAction = "PG_DWN";
 		if (collisionWithCube()) {
 			tranZ = tempZ;
 			tranY = tempY;
@@ -711,6 +761,7 @@ void OnKey(unsigned char key, int x, int y) {
 	{
 	case 'w':
 	{
+		lastAction = "W";
 		if (collisionWithCube()) {
 			tranZ = tempZ;
 			tranY = tempY;
@@ -732,6 +783,7 @@ void OnKey(unsigned char key, int x, int y) {
 	break;
 	case 's':
 	{
+		lastAction = "S";
 		if (collisionWithCube()) {
 			tranZ = tempZ;
 			tranY = tempY;
@@ -751,6 +803,7 @@ void OnKey(unsigned char key, int x, int y) {
 	break;
 	case 'd':
 	{
+		lastAction = "D";
 		if (collisionWithCube()) {
 			tranZ = tempZ;
 			tranY = tempY;
@@ -771,6 +824,7 @@ void OnKey(unsigned char key, int x, int y) {
 	break;
 	case 'a':
 	{
+		lastAction = "A";
 		if (collisionWithCube()) {
 			tranZ = tempZ;
 			tranY = tempY;
@@ -813,6 +867,42 @@ void OnKey(unsigned char key, int x, int y) {
 	glutPostRedisplay();
 }
 
+void onKeyUp(unsigned char key, int mx, int my) {
+	switch (key)
+	{
+	case 'w':
+	{
+		if(!flying){
+		tranY = 0;
+		}
+	}
+	break;
+	case 's':
+	{
+		if (!flying) {
+			tranY = 0;
+		}
+	}
+	break;
+	case 'd':
+	{
+		if (!flying) {
+			tranY = 0;
+		}
+	}
+	break;
+	case 'a':
+	{
+		if (!flying) {
+			tranY = 0;
+		}
+	}
+	break;
+	default:
+		break;
+	}
+}
+
 
 // funkce main
 int main(int argc, char* argv[])
@@ -832,6 +922,7 @@ int main(int argc, char* argv[])
 	glutMotionFunc(OnMouseMotion);			// registrace funkce pro pohyb mysi pri stisknutem tlacitku
 	glutSpecialFunc(OnSpecial);				// registrace funkce pro zachytavani specialnich klaves
 	glutKeyboardFunc(OnKey);
+	glutKeyboardUpFunc(onKeyUp);
 	createMenu(onMenu);
 
 	// pripadne dalsi udalosti...
